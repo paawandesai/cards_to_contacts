@@ -1,0 +1,14 @@
+streamlit==1.32.2
+opencv-python-headless==4.10.0.82
+pytesseract==0.3.10
+pydantic==2.6.4
+pandas==2.1.4
+openpyxl==3.1.2
+phonenumbers==8.13.20
+python-dotenv==1.0.1
+pytest==8.1.1
+pytest-cov==4.1.0
+black==24.3.0
+ruff==0.3.3
+email-validator==2.1.0.post1
+rich>=10.14.0,<14.0.0
