@@ -12,3 +12,6 @@ black==24.3.0
 ruff==0.3.3
 email-validator==2.1.0.post1
 rich>=10.14.0,<14.0.0
+rapidfuzz==3.9.0
+tldextract==5.1.2
+nameparser==1.1.0
