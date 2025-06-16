@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-"""Streamlit application entry-point."""
+"""A SkyTerra Product."""
 
 import logging
 from typing import List
