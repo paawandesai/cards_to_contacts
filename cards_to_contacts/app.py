@@ -97,15 +97,20 @@ if uploaded_files:
             LOGGER.exception("OCR failure")
             continue
 
-        for idx, (card_img, raw_text) in enumerate(results, start=1):
+        for idx, (card_img, raw_text, confidence) in enumerate(results, start=1):
             cols = st.columns([1, 3])
             with cols[0]:
                 # Convert numpy BGR to RGB for display
                 rgb = np.ascontiguousarray(card_img[:, :, ::-1])
                 st.image(rgb, caption=f"Card #{idx}")
             with cols[1]:
-                contact = enrich_contact(parser.parse_contact(raw_text))
+                contact = enrich_contact(parser.parse_contact(raw_text, confidence))
                 contacts.append(contact)
+                
+                # Show confidence score
+                if confidence is not None:
+                    confidence_color = "green" if confidence > 0.7 else "orange" if confidence > 0.4 else "red"
+                    st.markdown(f"**OCR Confidence:** <span style='color: {confidence_color}'>{confidence:.1%}</span>", unsafe_allow_html=True)
 
                 if show_raw:
                     with st.expander("Raw OCR text"):

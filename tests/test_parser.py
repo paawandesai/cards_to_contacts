@@ -122,3 +122,75 @@ def test_empty_text():
     
     contact = parse_contact("   \n\n  \t  ")
     assert contact.full_name is None
+
+
+def test_field_validation_and_cleanup():
+    """Test that field validation improves accuracy."""
+    raw_text = """ACME Corporation
+    Jane Smith
+    Senior Software Engineer
+    Engineering Department
+    jane.smith@acme.com
+    (555) 987-6543
+    123 Business Park Dr
+    Suite 200
+    Tech City, CA 94000"""
+    
+    contact = parse_contact(raw_text)
+    
+    # Should correctly identify company even when it appears first
+    assert contact.company == "ACME Corporation"
+    assert contact.full_name == "Jane Smith"
+    assert contact.title == "Senior Software Engineer"
+    assert "jane.smith@acme.com" in contact.emails
+    assert len(contact.phones) == 1
+    assert "123 Business Park Dr" in contact.address
+
+
+def test_enhanced_name_detection():
+    """Test improved name detection with various formats."""
+    test_cases = [
+        ("Dr. John Smith Jr.", "Dr. John Smith Jr."),
+        ("Mary Johnson, PhD", "Mary Johnson, PhD"),
+        ("Robert Lee III", "Robert Lee III"),
+        ("Sarah Wilson-Brown", "Sarah Wilson-Brown"),
+    ]
+    
+    for name_input, expected in test_cases:
+        raw_text = f"""{name_input}
+        Manager
+        Test Company Inc.
+        test@email.com"""
+        
+        contact = parse_contact(raw_text)
+        assert contact.full_name == expected
+
+
+def test_swapped_title_company():
+    """Test detection when title and company info are mixed up."""
+    raw_text = """John Developer
+    Tech Solutions LLC
+    Senior Software Engineer
+    john@techsolutions.com"""
+    
+    contact = parse_contact(raw_text)
+    
+    # Should correctly identify the company and title
+    assert contact.company == "Tech Solutions LLC"
+    assert contact.title == "Senior Software Engineer"
+    assert contact.full_name == "John Developer"
+
+
+def test_department_classification():
+    """Test that department names are handled correctly."""
+    raw_text = """Alice Manager
+    Marketing Department
+    Global Corp
+    alice@globalcorp.com
+    555-123-4567"""
+    
+    contact = parse_contact(raw_text)
+    
+    assert contact.full_name == "Alice Manager"
+    assert contact.company in ["Global Corp", "Marketing Department"]  # Either assignment is reasonable
+    assert "alice@globalcorp.com" in contact.emails
