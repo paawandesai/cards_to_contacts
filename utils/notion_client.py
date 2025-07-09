@@ -100,8 +100,8 @@ class NotionClient:
         # exists in the database (case-insensitive).
         alias_map: Dict[str, List[str]] = {
             "name": ["Name", "Full Name"],
-            "title": ["Title", "Job Title"],
-            "company": ["Company", "Organisation", "Organization"],
+            "title": ["Title", "Contact title", "Job Title"],
+            "company": ["Company", "Company Name", "Organisation", "Organization"],
             "email": ["Email", "E-mail"],
             "phone": ["Phone", "Phone Number", "Mobile"],
             "website": ["Website", "Website URL", "URL"],
@@ -109,7 +109,7 @@ class NotionClient:
             "linkedin": ["LinkedIn", "LinkedIn URL"],
             "additional_notes": ["Notes", "Additional Notes", "Comments"],
             "confidence": ["Confidence", "Score", "Confidence Score"],
-            "extracted_date": ["Extracted Date", "Date Extracted", "Imported"]
+            "extracted_date": ["Extracted Date", "Date Extracted", "Date Updated", "Imported"]
         }
 
         # Helper to find a matching property name inside the database schema
