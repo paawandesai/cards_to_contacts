@@ -187,8 +187,8 @@ class NotionClient:
         properties: Dict[str, Any] = {}
 
         property_mappings = {
-            "name": ("Name", "title"),
-            "title": ("Title", "rich_text"),
+            "name": ("Name", "title", "Contact Name"),
+            "title": ("Title", "rich_text", "Contact title"),
             "company": ("Company", "rich_text"),
             "email": ("Email", "email"),
             "phone": ("Phone", "phone_number"),
