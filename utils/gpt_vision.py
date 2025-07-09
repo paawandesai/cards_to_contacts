@@ -11,6 +11,7 @@ from PIL import Image
 import io
 import os
 import time
+import httpx  # Use custom HTTP client to avoid proxy incompatibility
 from typing import Dict, List, Any
 
 EXTRACTION_PROMPT = """
@@ -208,18 +209,16 @@ def extract_business_cards(image_file, model: str, api_key: str) -> Dict[str, An
         Dictionary containing extracted cards and usage info
     """
     try:
-        # Initialize OpenAI client with timeout and retry settings for deployed environments
-        client_config = {
-            "api_key": api_key,
-            "timeout": 60.0,  # 60 second timeout for vision processing
-            "max_retries": 3  # Retry failed requests
-        }
-        
-        # Proxy settings are automatically picked up from standard environment
-        # variables (HTTPS_PROXY / HTTP_PROXY) by httpx which the OpenAI SDK
-        # uses internally, so we don't need to pass them explicitly.
-        
-        client = OpenAI(**client_config)
+        # Build a custom httpx client. This bypasses OpenAI's internal client
+        # construction that passes the now-unsupported "proxies" parameter to
+        # httpx when newer versions are installed.
+        http_client = httpx.Client(timeout=60.0, follow_redirects=True)
+
+        client = OpenAI(
+            api_key=api_key,
+            max_retries=3,
+            http_client=http_client,
+        )
         
         # Encode image
         base64_image = encode_image(image_file)
@@ -378,17 +377,13 @@ def validate_api_key(api_key: str, fallback_method: bool = False) -> bool:
         return st.session_state[cache_key]
     
     try:
-        # Configure client with timeout and retry settings for deployed environments
-        client_config = {
-            "api_key": api_key,
-            "timeout": 30.0,  # 30 second timeout
-            "max_retries": 2  # Retry failed requests
-        }
-        
-        # Let the underlying HTTP client pick up any proxy environment
-        # variables automatically instead of passing an unsupported argument.
-        
-        client = OpenAI(**client_config)
+        http_client = httpx.Client(timeout=30.0, follow_redirects=True)
+
+        client = OpenAI(
+            api_key=api_key,
+            max_retries=2,
+            http_client=http_client,
+        )
         
         # Primary method: Use lightweight models.list() - doesn't consume tokens
         max_retries = 3
