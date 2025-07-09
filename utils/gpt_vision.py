@@ -215,12 +215,9 @@ def extract_business_cards(image_file, model: str, api_key: str) -> Dict[str, An
             "max_retries": 3  # Retry failed requests
         }
         
-        # Add proxy support if environment variable is set
-        if os.getenv("HTTPS_PROXY") or os.getenv("HTTP_PROXY"):
-            client_config["proxies"] = {
-                "https": os.getenv("HTTPS_PROXY"),
-                "http": os.getenv("HTTP_PROXY")
-            }
+        # Proxy settings are automatically picked up from standard environment
+        # variables (HTTPS_PROXY / HTTP_PROXY) by httpx which the OpenAI SDK
+        # uses internally, so we don't need to pass them explicitly.
         
         client = OpenAI(**client_config)
         
@@ -388,12 +385,8 @@ def validate_api_key(api_key: str, fallback_method: bool = False) -> bool:
             "max_retries": 2  # Retry failed requests
         }
         
-        # Add proxy support if environment variable is set
-        if os.getenv("HTTPS_PROXY") or os.getenv("HTTP_PROXY"):
-            client_config["proxies"] = {
-                "https": os.getenv("HTTPS_PROXY"),
-                "http": os.getenv("HTTP_PROXY")
-            }
+        # Let the underlying HTTP client pick up any proxy environment
+        # variables automatically instead of passing an unsupported argument.
         
         client = OpenAI(**client_config)
         
