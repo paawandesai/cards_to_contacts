@@ -61,16 +61,52 @@ def main():
             help="Get your API key from https://platform.openai.com/api-keys"
         )
         
+        # Add tier information
+        with st.expander("ℹ️ About API Key Tiers"):
+            st.markdown("""
+            **Free Tier** (New Keys):
+            - 3 requests/minute, 200 requests/day
+            - Good for testing, limited for production
+            
+            **Tier 1** (After $5 payment):
+            - 500 requests/minute, 10K requests/day
+            - Recommended for regular use
+            
+            **Higher Tiers** (Tier 2+):
+            - Even higher limits based on usage history
+            
+            **Check your current tier:** https://platform.openai.com/account/limits
+            **Upgrade billing:** https://platform.openai.com/account/billing/overview
+            """)
+        
         # Validate OpenAI API key
         if openai_key:
-            if st.button("🔍 Validate OpenAI Key"):
-                with st.spinner("Validating API key..."):
-                    if validate_api_key(openai_key):
-                        st.session_state.api_key_validated = True
-                        st.success("✅ API key is valid!")
-                    else:
-                        st.session_state.api_key_validated = False
-                        st.error("❌ Invalid API key")
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("🔍 Validate OpenAI Key"):
+                    with st.spinner("Validating API key..."):
+                        if validate_api_key(openai_key):
+                            st.session_state.api_key_validated = True
+                            st.success("✅ API key is valid!")
+                        else:
+                            st.session_state.api_key_validated = False
+                            st.error("❌ Invalid API key")
+            
+            with col2:
+                if st.button("⏭️ Skip Validation"):
+                    st.session_state.api_key_validated = True
+                    st.warning("⚠️ Validation skipped - proceeding with unvalidated key")
+                    st.info("💡 If the key is invalid, processing will fail")
+            
+            # Development mode toggle
+            dev_mode = st.checkbox(
+                "🔧 Development Mode",
+                help="Skip validation automatically for development/testing"
+            )
+            
+            if dev_mode and openai_key and not st.session_state.api_key_validated:
+                st.session_state.api_key_validated = True
+                st.info("🔧 Development mode: API key validation skipped")
         
         # Notion Integration (Optional)
         st.subheader("🗂️ Notion Integration (Optional)")

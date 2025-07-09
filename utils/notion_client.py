@@ -18,6 +18,11 @@ class NotionClient:
             "Content-Type": "application/json",
             "Notion-Version": "2022-06-28"
         }
+        # Cache the database properties so we only fetch them once per client instance
+        # This allows us to build the property payload dynamically based on what
+        # actually exists in the target database, avoiding "property does not exist"
+        # errors and type mismatches.
+        self.database_properties: Dict[str, Any] = self.get_database_properties()
     
     def test_connection(self) -> Dict[str, Any]:
         """Test connection to Notion API and database"""
@@ -75,10 +80,112 @@ class NotionClient:
             return {"success": False, "error": str(e)}
     
     def _map_card_to_notion_properties(self, card_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Map business card data to Notion database properties"""
-        properties = {}
-        
-        # Standard property mappings
+        """Map business card data to Notion database properties.
+
+        Only properties that exist in the target database will be included. The
+        value is formatted according to the database's property *type* so that
+        mismatches (e.g. providing rich_text for a multi_select property) are
+        avoided.
+        """
+
+        properties: Dict[str, Any] = {}
+
+        if not self.database_properties:
+            # If we couldn't fetch the schema for some reason fall back to the
+            # original static behaviour so we at least attempt to upload.
+            return self._legacy_map_card_to_notion_properties(card_data)
+
+        # Mapping of data keys to potential Notion property names.  Feel free to
+        # add aliases here – we will pick the first matching property that
+        # exists in the database (case-insensitive).
+        alias_map: Dict[str, List[str]] = {
+            "name": ["Name", "Full Name"],
+            "title": ["Title", "Job Title"],
+            "company": ["Company", "Organisation", "Organization"],
+            "email": ["Email", "E-mail"],
+            "phone": ["Phone", "Phone Number", "Mobile"],
+            "website": ["Website", "Website URL", "URL"],
+            "address": ["Address", "Location"],
+            "linkedin": ["LinkedIn", "LinkedIn URL"],
+            "additional_notes": ["Notes", "Additional Notes", "Comments"],
+            "confidence": ["Confidence", "Score", "Confidence Score"],
+            "extracted_date": ["Extracted Date", "Date Extracted", "Imported"]
+        }
+
+        # Helper to find a matching property name inside the database schema
+        def _find_prop_name(aliases: List[str]) -> str:
+            for alias in aliases:
+                for db_prop in self.database_properties.keys():
+                    if db_prop.lower() == alias.lower():
+                        return db_prop  # return the *actual* casing from DB
+            return ""
+
+        # Detect the unique title property (there is always exactly one)
+        title_prop_name = None
+        for db_prop, meta in self.database_properties.items():
+            if meta.get("type") == "title":
+                title_prop_name = db_prop
+                break
+
+        # Iterate through each card field, attempt to map and format.
+        for card_field, aliases in alias_map.items():
+            if card_field == "extracted_date":
+                # This is an internal virtual field that is not present in card_data.
+                continue
+
+            value = card_data.get(card_field)
+            if value is None or (isinstance(value, str) and not value.strip()):
+                continue  # Skip empty values
+
+            prop_name = _find_prop_name(aliases)
+            # Special handling: if we're mapping the 'name' card field and
+            # didn't find an alias match, default to the database's title
+            # property so we always populate the primary column.
+            if card_field == "name" and not prop_name and title_prop_name:
+                prop_name = title_prop_name
+
+            if not prop_name:
+                # Property not present in the database – skip it.
+                continue
+
+            prop_info = self.database_properties.get(prop_name, {})
+            prop_type = prop_info.get("type", "rich_text")
+
+            formatted_value = self._format_notion_property(value, prop_type)
+            if formatted_value:
+                properties[prop_name] = formatted_value
+
+        # Handle confidence specially if it wasn't already processed (i.e. if the
+        # database does not have a matching property we still want to include
+        # it as a number in a fallback field)
+        if "confidence" in card_data and "confidence" not in alias_map:
+            conf_prop_name = _find_prop_name(["Confidence"])
+            if conf_prop_name:
+                properties[conf_prop_name] = {"number": round(card_data["confidence"], 2)}
+
+        # Always try to capture the extraction/import date if the DB has a date
+        # property we can use.
+        date_prop_name = _find_prop_name(alias_map["extracted_date"])
+        if date_prop_name:
+            extracted_value = pd.Timestamp.now().isoformat()
+            prop_info = self.database_properties.get(date_prop_name, {})
+            prop_type = prop_info.get("type", "date")
+            # Re-use the generic formatter so the value matches the property's actual type
+            formatted_val = self._format_notion_property(extracted_value, prop_type)
+            if formatted_val:
+                properties[date_prop_name] = formatted_val
+
+        return properties
+
+    # ------------------------------------------------------------------
+    # Legacy (static) mapping retained as a fallback when we cannot obtain
+    # the database schema (e.g. network issues).  Original implementation
+    # remains unchanged.
+    # ------------------------------------------------------------------
+    def _legacy_map_card_to_notion_properties(self, card_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Previous static mapping logic used before dynamic schema support."""
+        properties: Dict[str, Any] = {}
+
         property_mappings = {
             "name": ("Name", "title"),
             "title": ("Title", "rich_text"),
@@ -90,44 +197,79 @@ class NotionClient:
             "linkedin": ("LinkedIn", "url"),
             "additional_notes": ("Notes", "rich_text")
         }
-        
+
         for card_field, (notion_field, notion_type) in property_mappings.items():
             value = card_data.get(card_field, "")
-            if value:  # Only add non-empty values
+            if value:
                 properties[notion_field] = self._format_notion_property(value, notion_type)
-        
-        # Add confidence score as a number
+
         if "confidence" in card_data:
-            properties["Confidence"] = {
-                "number": round(card_data["confidence"], 2)
-            }
-        
-        # Add extraction date
+            properties["Confidence"] = {"number": round(card_data["confidence"], 2)}
+
         properties["Extracted Date"] = {
-            "date": {
-                "start": pd.Timestamp.now().isoformat()
-            }
+            "date": {"start": pd.Timestamp.now().isoformat()}
         }
-        
+
         return properties
     
-    def _format_notion_property(self, value: str, property_type: str) -> Dict[str, Any]:
-        """Format value according to Notion property type"""
-        if property_type == "title":
-            return {"title": [{"text": {"content": str(value)[:2000]}}]}  # Limit to 2000 chars
-        elif property_type == "rich_text":
+    def _format_notion_property(self, value: Any, property_type: str) -> Dict[str, Any]:
+        """Format a Python value according to the given Notion property type.
+
+        If the property type is not implemented we gracefully fall back to a
+        rich_text representation so that the data is still preserved rather
+        than the upload failing entirely.
+        """
+
+        try:
+            if property_type == "title":
+                return {"title": [{"text": {"content": str(value)[:2000]}}]}
+
+            if property_type == "rich_text":
+                return {"rich_text": [{"text": {"content": str(value)[:2000]}}]}
+
+            if property_type == "email":
+                return {"email": str(value) if "@" in str(value) else None}
+
+            if property_type == "phone_number":
+                return {"phone_number": str(value)}
+
+            if property_type == "url":
+                url = str(value)
+                if url and not url.startswith(("http://", "https://")):
+                    url = f"https://{url}"
+                return {"url": url}
+
+            if property_type == "multi_select":
+                # Split on commas/semicolons/newlines to create separate tags
+                if isinstance(value, (list, tuple)):
+                    options = [str(v).strip() for v in value if str(v).strip()]
+                else:
+                    options = [str(v).strip() for v in str(value).replace(";", ",").split(",")]
+                return {"multi_select": [{"name": opt[:100]} for opt in options if opt]}
+
+            if property_type == "select":
+                return {"select": {"name": str(value)[:100]}}
+
+            if property_type == "number":
+                try:
+                    num = float(value)
+                except (TypeError, ValueError):
+                    num = None
+                return {"number": num}
+
+            if property_type == "date":
+                # Attempt to parse date-like strings; if it fails, default to now
+                try:
+                    date_val = pd.to_datetime(value).isoformat()
+                except Exception:
+                    date_val = pd.Timestamp.now().isoformat()
+                return {"date": {"start": date_val}}
+
+            # Fallback for unhandled property types
             return {"rich_text": [{"text": {"content": str(value)[:2000]}}]}
-        elif property_type == "email":
-            return {"email": str(value) if "@" in str(value) else None}
-        elif property_type == "phone_number":
-            return {"phone_number": str(value)}
-        elif property_type == "url":
-            # Ensure URL has protocol
-            url = str(value)
-            if url and not url.startswith(('http://', 'https://')):
-                url = f"https://{url}"
-            return {"url": url}
-        else:
+
+        except Exception:
+            # In case of any formatting exception fall back to rich_text
             return {"rich_text": [{"text": {"content": str(value)[:2000]}}]}
     
     def upload_batch(self, df: pd.DataFrame) -> Dict[str, Any]:

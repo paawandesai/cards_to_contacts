@@ -9,6 +9,8 @@ import streamlit as st
 from openai import OpenAI
 from PIL import Image
 import io
+import os
+import time
 from typing import Dict, List, Any
 
 EXTRACTION_PROMPT = """
@@ -206,8 +208,21 @@ def extract_business_cards(image_file, model: str, api_key: str) -> Dict[str, An
         Dictionary containing extracted cards and usage info
     """
     try:
-        # Initialize OpenAI client
-        client = OpenAI(api_key=api_key)
+        # Initialize OpenAI client with timeout and retry settings for deployed environments
+        client_config = {
+            "api_key": api_key,
+            "timeout": 60.0,  # 60 second timeout for vision processing
+            "max_retries": 3  # Retry failed requests
+        }
+        
+        # Add proxy support if environment variable is set
+        if os.getenv("HTTPS_PROXY") or os.getenv("HTTP_PROXY"):
+            client_config["proxies"] = {
+                "https": os.getenv("HTTPS_PROXY"),
+                "http": os.getenv("HTTP_PROXY")
+            }
+        
+        client = OpenAI(**client_config)
         
         # Encode image
         base64_image = encode_image(image_file)
@@ -352,12 +367,124 @@ def calculate_actual_cost(usage: Dict[str, int], model: str) -> float:
     
     return prompt_cost + completion_cost
 
-def validate_api_key(api_key: str) -> bool:
-    """Validate OpenAI API key"""
+def validate_api_key(api_key: str, fallback_method: bool = False) -> bool:
+    """Validate OpenAI API key with improved error handling for deployed environments"""
+    
+    # Basic format check first
+    if not api_key or not api_key.startswith('sk-'):
+        st.error("❌ Invalid API key format. Key should start with 'sk-'")
+        return False
+    
+    # Check cache first to avoid repeated validation calls
+    cache_key = f"api_key_valid_{api_key[:20]}..."  # Use first 20 chars as cache key
+    if cache_key in st.session_state:
+        return st.session_state[cache_key]
+    
     try:
-        client = OpenAI(api_key=api_key)
-        # Make a simple API call to test the key
-        client.models.list()
+        # Configure client with timeout and retry settings for deployed environments
+        client_config = {
+            "api_key": api_key,
+            "timeout": 30.0,  # 30 second timeout
+            "max_retries": 2  # Retry failed requests
+        }
+        
+        # Add proxy support if environment variable is set
+        if os.getenv("HTTPS_PROXY") or os.getenv("HTTP_PROXY"):
+            client_config["proxies"] = {
+                "https": os.getenv("HTTPS_PROXY"),
+                "http": os.getenv("HTTP_PROXY")
+            }
+        
+        client = OpenAI(**client_config)
+        
+        # Primary method: Use lightweight models.list() - doesn't consume tokens
+        max_retries = 3
+        base_delay = 1.0  # Start with 1 second delay
+        
+        for attempt in range(max_retries):
+            try:
+                client.models.list()
+                # If we get here, the API key is valid - cache the result
+                st.session_state[cache_key] = True
+                return True
+            except Exception as e:
+                error_msg = str(e).lower()
+                
+                # If it's a rate limit error and we have retries left, wait and retry
+                if ("rate_limit" in error_msg or "quota" in error_msg) and attempt < max_retries - 1:
+                    delay = base_delay * (2 ** attempt)  # Exponential backoff
+                    st.warning(f"⚠️ Rate limit hit, waiting {delay:.1f} seconds before retry {attempt + 1}/{max_retries}...")
+                    time.sleep(delay)
+                    continue
+                
+                # If models.list fails and not already trying fallback method
+                if not fallback_method:
+                    if "rate_limit" in error_msg or "quota" in error_msg:
+                        # For rate limit errors, try a different approach
+                        try:
+                            # Try models.retrieve for a specific model (also token-free)
+                            client.models.retrieve("gpt-3.5-turbo")
+                            st.session_state[cache_key] = True
+                            return True
+                        except Exception:
+                            # If that also fails, it's likely a rate limit issue
+                            pass
+                    else:
+                        # For other errors, re-raise to be handled below
+                        raise e
+                
+                # If we get here, all retry attempts failed
+                raise e
+        
+        # Fallback method only if primary methods fail
+        if fallback_method:
+            response = client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[{"role": "user", "content": "test"}],
+                max_tokens=1,
+                temperature=0
+            )
+        
+        # If we get here, the API key is valid - cache the result
+        st.session_state[cache_key] = True
         return True
-    except Exception:
+        
+    except Exception as e:
+        error_msg = str(e).lower()
+        
+        # Try fallback method if primary failed and we haven't tried it yet
+        if not fallback_method and ("timeout" in error_msg or "connection" in error_msg):
+            st.warning("⚠️ Primary validation failed, trying fallback method...")
+            return validate_api_key(api_key, fallback_method=True)
+        
+        # Log specific error types for debugging with enhanced rate limit guidance
+        if "invalid_api_key" in error_msg or "authentication" in error_msg:
+            st.error("❌ Invalid API key - please check your key is correct")
+        elif "rate_limit" in error_msg or "quota" in error_msg:
+            st.error("❌ API rate limit exceeded or quota reached")
+            st.warning("⚠️ **New API Key Rate Limits**:")
+            st.info("""
+            **Free Tier** (New Keys): 3 requests/minute, 200 requests/day
+            **Tier 1** (After $5 payment): 500 requests/minute, 10K requests/day
+            
+            **Solutions:**
+            1. Wait a few minutes and try again
+            2. Add $5 to your OpenAI account to upgrade to Tier 1
+            3. Use the "Skip Validation" button if you're confident your key is correct
+            
+            **Upgrade your API key tier at:** https://platform.openai.com/account/billing/overview
+            """)
+        elif "timeout" in error_msg or "connection" in error_msg:
+            st.error("❌ Connection timeout - this may be a temporary network issue")
+            st.info("💡 You can try again or use 'Skip Validation' if you're confident your key is correct")
+        elif "ssl" in error_msg or "certificate" in error_msg:
+            st.error("❌ SSL/TLS certificate error - this may be a deployment environment issue")
+            st.info("💡 You can use 'Skip Validation' if you're confident your key is correct")
+        else:
+            st.error(f"❌ API validation failed: {str(e)}")
+        
+        # Don't cache negative results for rate limit errors - they may be temporary
+        if "rate_limit" not in error_msg and "quota" not in error_msg:
+            st.session_state[cache_key] = False
+        
         return False
