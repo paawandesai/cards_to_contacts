@@ -90,6 +90,42 @@ class NotionClient:
 
         properties: Dict[str, Any] = {}
 
+        # ------------------------------------------------------------------
+        # Address parsing – attempt to split the raw address into components
+        # like City, State, and Postal Code so they can be mapped to separate
+        # columns if the database provides them.
+        # ------------------------------------------------------------------
+
+        def _parse_address_components(address: str):
+            """Return (city, state, postal_code) if we can parse them, else blanks."""
+            if not address:
+                return "", "", ""
+
+            # Example pattern: "Springfield, IL 62704" or "Springfield IL 62704"
+            # We'll look for a 2-letter state code followed by a 5-digit zip.
+            import re
+
+            pattern = re.compile(r"(?P<city>[A-Za-z\s]+)[,\s]+(?P<state>[A-Z]{2})\s+(?P<zip>\d{5}(?:-\d{4})?)")
+            match = pattern.search(address)
+            if match:
+                city = match.group("city").strip()
+                state = match.group("state").strip()
+                postal = match.group("zip").strip()
+                return city, state, postal
+
+            # Fallback: try splitting on commas – last parts may be state/zip.
+            parts = [p.strip() for p in address.split(",") if p.strip()]
+            if len(parts) >= 2:
+                city = parts[-2]
+                last_part = parts[-1]
+                # Try to split last part into state + zip
+                m2 = re.match(r"([A-Z]{2})\s+(\d{5}(?:-\d{4})?)", last_part)
+                if m2:
+                    return city, m2.group(1), m2.group(2)
+            return "", "", ""
+
+        city_val, state_val, postal_val = _parse_address_components(card_data.get("address", ""))
+
         if not self.database_properties:
             # If we couldn't fetch the schema for some reason fall back to the
             # original static behaviour so we at least attempt to upload.
@@ -109,7 +145,11 @@ class NotionClient:
             "linkedin": ["LinkedIn", "LinkedIn URL"],
             "additional_notes": ["Notes", "Additional Notes", "Comments"],
             "confidence": ["Confidence", "Score", "Confidence Score"],
-            "extracted_date": ["Extracted Date", "Date Extracted", "Date Updated", "Imported"]
+            "extracted_date": ["Extracted Date", "Date Extracted", "Date Updated", "Imported"],
+            # Address components
+            "city": ["City"],
+            "state": ["State", "Province"],
+            "postal_code": ["Postal Code", "Zip", "Zip Code"]
         }
 
         # Helper to find a matching property name inside the database schema
@@ -133,7 +173,16 @@ class NotionClient:
                 # This is an internal virtual field that is not present in card_data.
                 continue
 
-            value = card_data.get(card_field)
+            # Provide values from parsed components when relevant
+            if card_field == "city":
+                value = city_val
+            elif card_field == "state":
+                value = state_val
+            elif card_field == "postal_code":
+                value = postal_val
+            else:
+                value = card_data.get(card_field)
+
             if value is None or (isinstance(value, str) and not value.strip()):
                 continue  # Skip empty values
 
