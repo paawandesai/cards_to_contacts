@@ -26,7 +26,8 @@ from utils.data_processing import (
 from utils.notion_client import upload_to_notion, validate_notion_credentials
 
 # Check if we're in embed mode
-embed_mode = st.query_params.get("embed", "false").lower() == "true"
+query_params = st.experimental_get_query_params()
+embed_mode = query_params.get("embed", ["false"])[0].lower() == "true"
 
 # Page configuration
 st.set_page_config(
