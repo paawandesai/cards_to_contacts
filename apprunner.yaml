@@ -3,11 +3,9 @@ runtime: python3
 build:
   commands:
     build:
-      - echo "Build phase completed"
+      - pip install --upgrade pip
+      - pip install -r requirements.txt
 run:
-  pre-run:
-    - pip install --upgrade pip
-    - pip install -r requirements.txt
-  command: streamlit run main.py --server.port=8080 --server.address=0.0.0.0 --server.enableXsrfProtection=false --server.enableCORS=false
+  command: python app.py
   network:
     port: 8080

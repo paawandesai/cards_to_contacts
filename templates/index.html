@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% if embed_mode %}AI Business Card Reader{% else %}🪪 AI Business Card Reader{% endif %}</title>
+    
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+    
+    <style>
+        .embed-mode {
+            padding: 10px;
+        }
+        .embed-mode .container-fluid {
+            max-width: 100%;
+            padding: 0;
+        }
+        .embed-mode h1 {
+            font-size: 1.5rem;
+            margin-bottom: 0.5rem;
+        }
+        .card {
+            border: none;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .upload-area {
+            border: 2px dashed #dee2e6;
+            border-radius: 0.5rem;
+            padding: 2rem;
+            text-align: center;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+        .upload-area:hover {
+            border-color: #007bff;
+            background-color: #f8f9fa;
+        }
+        .upload-area.dragover {
+            border-color: #007bff;
+            background-color: #e3f2fd;
+        }
+        .preview-images {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 15px;
+        }
+        .preview-image {
+            width: 100px;
+            height: 100px;
+            object-fit: cover;
+            border-radius: 0.25rem;
+            border: 1px solid #dee2e6;
+        }
+        .cost-badge {
+            font-size: 0.9rem;
+        }
+        .progress-container {
+            display: none;
+            margin-top: 20px;
+        }
+        .results-container {
+            display: none;
+            margin-top: 30px;
+        }
+        .table-responsive {
+            max-height: 400px;
+        }
+        .btn-sm {
+            font-size: 0.8rem;
+        }
+        {% if embed_mode %}
+        body {
+            font-size: 0.9rem;
+        }
+        .card {
+            margin-bottom: 1rem;
+        }
+        {% endif %}
+    </style>
+</head>
+<body class="{% if embed_mode %}embed-mode{% endif %}">
+    <div class="container-fluid {% if not embed_mode %}py-4{% endif %}">
+        
+        <!-- Header -->
+        {% if embed_mode %}
+            <h3 class="text-center mb-3">🪪 AI Business Card Reader</h3>
+            <p class="text-center text-muted small mb-4">Extract contact information from business cards using GPT Vision</p>
+        {% else %}
+            <h1 class="text-center mb-2">🪪 AI Business Card Reader</h1>
+            <p class="text-center text-muted mb-4">Extract contact information from business cards using GPT Vision</p>
+        {% endif %}
+
+        <!-- API Configuration -->
+        <div class="row">
+            <div class="col-lg-4 mb-4">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0"><i class="bi bi-key"></i> API Configuration</h5>
+                    </div>
+                    <div class="card-body">
+                        <!-- OpenAI API Key -->
+                        <div class="mb-3">
+                            <label for="apiKey" class="form-label">OpenAI API Key <span class="text-danger">*</span></label>
+                            <input type="password" class="form-control" id="apiKey" placeholder="sk-proj-..." required>
+                            <div class="form-text">Get your API key from <a href="https://platform.openai.com/api-keys" target="_blank">platform.openai.com</a></div>
+                            <div class="mt-2">
+                                <button type="button" class="btn btn-outline-primary btn-sm" id="validateKey">
+                                    <i class="bi bi-check-circle"></i> Validate Key
+                                </button>
+                                <button type="button" class="btn btn-outline-secondary btn-sm" id="skipValidation">
+                                    <i class="bi bi-skip-forward"></i> Skip
+                                </button>
+                            </div>
+                            <div id="keyValidation" class="mt-2"></div>
+                        </div>
+
+                        <!-- Model Selection -->
+                        <div class="mb-3">
+                            <label for="modelSelect" class="form-label">GPT Model</label>
+                            <select class="form-select" id="modelSelect">
+                                {% for key, model in model_options.items() %}
+                                <option value="{{ key }}" data-cost="{{ model.vision_cost }}">
+                                    {{ model.name }} - {{ "${:.4f}".format(model.vision_cost) }} per image
+                                </option>
+                                {% endfor %}
+                            </select>
+                            <div class="form-text" id="modelDescription">{{ model_options['gpt-4o-mini'].description }}</div>
+                        </div>
+
+                        <!-- Notion Integration (Optional) -->
+                        <div class="accordion" id="notionAccordion">
+                            <div class="accordion-item">
+                                <h2 class="accordion-header">
+                                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#notionCollapse">
+                                        <i class="bi bi-journal-text me-2"></i> Notion Integration (Optional)
+                                    </button>
+                                </h2>
+                                <div id="notionCollapse" class="accordion-collapse collapse" data-bs-parent="#notionAccordion">
+                                    <div class="accordion-body">
+                                        <div class="mb-3">
+                                            <label for="notionToken" class="form-label">Notion Integration Token</label>
+                                            <input type="password" class="form-control" id="notionToken" placeholder="secret_...">
+                                        </div>
+                                        <div class="mb-3">
+                                            <label for="notionDatabase" class="form-label">Notion Database ID</label>
+                                            <input type="text" class="form-control" id="notionDatabase" placeholder="32-character string">
+                                        </div>
+                                        <button type="button" class="btn btn-outline-info btn-sm" id="testNotion">
+                                            <i class="bi bi-check-circle"></i> Test Connection
+                                        </button>
+                                        <div id="notionValidation" class="mt-2"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Main Upload Area -->
+            <div class="col-lg-8">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0"><i class="bi bi-cloud-upload"></i> Upload Business Cards</h5>
+                    </div>
+                    <div class="card-body">
+                        <form id="uploadForm" enctype="multipart/form-data">
+                            <div class="upload-area" id="uploadArea">
+                                <i class="bi bi-cloud-upload" style="font-size: 3rem; color: #6c757d;"></i>
+                                <h4>Drop business card images here</h4>
+                                <p class="text-muted">or click to select files</p>
+                                <input type="file" id="imageInput" name="images" multiple accept="image/*" style="display: none;">
+                                <button type="button" class="btn btn-outline-primary" onclick="document.getElementById('imageInput').click()">
+                                    <i class="bi bi-folder2-open"></i> Choose Files
+                                </button>
+                            </div>
+                            
+                            <div class="preview-images" id="previewContainer"></div>
+                            
+                            <div class="d-flex justify-content-between align-items-center mt-3">
+                                <div>
+                                    <span class="badge bg-info cost-badge" id="costEstimate" style="display: none;"></span>
+                                </div>
+                                <button type="submit" class="btn btn-primary" id="processBtn" disabled>
+                                    <i class="bi bi-magic"></i> Extract Business Cards
+                                </button>
+                            </div>
+                        </form>
+
+                        <!-- Progress -->
+                        <div class="progress-container" id="progressContainer">
+                            <div class="progress">
+                                <div class="progress-bar" id="progressBar" role="progressbar" style="width: 0%"></div>
+                            </div>
+                            <div class="text-center mt-2">
+                                <span id="progressText">Processing images...</span>
+                            </div>
+                        </div>
+
+                        <!-- Results -->
+                        <div class="results-container" id="resultsContainer">
+                            <h5><i class="bi bi-table"></i> Extracted Business Card Data</h5>
+                            <div class="table-responsive">
+                                <table class="table table-striped table-sm" id="resultsTable">
+                                    <thead class="table-dark">
+                                        <tr>
+                                            <th>Name</th>
+                                            <th>Company</th>
+                                            <th>Email</th>
+                                            <th>Phone</th>
+                                            <th>Confidence</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="resultsBody">
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <div class="d-flex gap-2 mt-3">
+                                <button class="btn btn-success btn-sm" id="downloadCSV">
+                                    <i class="bi bi-file-earmark-text"></i> Download CSV
+                                </button>
+                                <button class="btn btn-success btn-sm" id="downloadExcel">
+                                    <i class="bi bi-file-earmark-spreadsheet"></i> Download Excel
+                                </button>
+                                <button class="btn btn-info btn-sm" id="uploadNotion" style="display: none;">
+                                    <i class="bi bi-journal-text"></i> Send to Notion
+                                </button>
+                            </div>
+
+                            <div id="processingStats" class="mt-3"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <script>
+        let selectedFiles = [];
+        let apiKeyValidated = false;
+        let currentSessionId = null;
+        let modelOptions = {{ model_options | tojsonfilter }};
+
+        // File upload handling
+        document.getElementById('imageInput').addEventListener('change', handleFileSelect);
+        document.getElementById('uploadArea').addEventListener('click', () => {
+            document.getElementById('imageInput').click();
+        });
+
+        // Drag and drop
+        const uploadArea = document.getElementById('uploadArea');
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragover');
+        });
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            const files = Array.from(e.dataTransfer.files);
+            handleFiles(files);
+        });
+
+        // API key validation
+        document.getElementById('validateKey').addEventListener('click', validateApiKey);
+        document.getElementById('skipValidation').addEventListener('click', () => {
+            apiKeyValidated = true;
+            updateProcessButton();
+            showAlert('keyValidation', 'warning', 'Validation skipped - proceeding with unvalidated key');
+        });
+
+        // Model selection
+        document.getElementById('modelSelect').addEventListener('change', updateModelInfo);
+
+        // Form submission
+        document.getElementById('uploadForm').addEventListener('submit', processImages);
+
+        // Export buttons
+        document.getElementById('downloadCSV').addEventListener('click', () => downloadFile('csv'));
+        document.getElementById('downloadExcel').addEventListener('click', () => downloadFile('excel'));
+
+        function handleFileSelect(e) {
+            handleFiles(Array.from(e.target.files));
+        }
+
+        function handleFiles(files) {
+            selectedFiles = files.filter(file => file.type.startsWith('image/'));
+            updatePreview();
+            updateCostEstimate();
+            updateProcessButton();
+        }
+
+        function updatePreview() {
+            const container = document.getElementById('previewContainer');
+            container.innerHTML = '';
+            
+            selectedFiles.forEach((file, index) => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const img = document.createElement('img');
+                    img.src = e.target.result;
+                    img.className = 'preview-image';
+                    img.title = file.name;
+                    container.appendChild(img);
+                };
+                reader.readAsDataURL(file);
+            });
+        }
+
+        function updateCostEstimate() {
+            if (selectedFiles.length > 0) {
+                const model = document.getElementById('modelSelect').value;
+                const costPerImage = modelOptions[model].vision_cost;
+                const totalCost = costPerImage * selectedFiles.length;
+                document.getElementById('costEstimate').textContent = 
+                    `Estimated cost: $${totalCost.toFixed(4)} for ${selectedFiles.length} image(s)`;
+                document.getElementById('costEstimate').style.display = 'inline';
+            } else {
+                document.getElementById('costEstimate').style.display = 'none';
+            }
+        }
+
+        function updateModelInfo() {
+            const model = document.getElementById('modelSelect').value;
+            document.getElementById('modelDescription').textContent = modelOptions[model].description;
+            updateCostEstimate();
+        }
+
+        function updateProcessButton() {
+            const btn = document.getElementById('processBtn');
+            const hasFiles = selectedFiles.length > 0;
+            const hasKey = document.getElementById('apiKey').value.trim() !== '';
+            
+            btn.disabled = !(hasFiles && hasKey);
+        }
+
+        // Listen for API key input
+        document.getElementById('apiKey').addEventListener('input', updateProcessButton);
+
+        async function validateApiKey() {
+            const apiKey = document.getElementById('apiKey').value.trim();
+            if (!apiKey) {
+                showAlert('keyValidation', 'danger', 'Please enter an API key');
+                return;
+            }
+
+            try {
+                const response = await fetch('/validate_api_key', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ api_key: apiKey })
+                });
+                
+                const result = await response.json();
+                if (result.valid) {
+                    apiKeyValidated = true;
+                    showAlert('keyValidation', 'success', 'API key is valid!');
+                } else {
+                    showAlert('keyValidation', 'danger', result.error || 'Invalid API key');
+                }
+            } catch (error) {
+                showAlert('keyValidation', 'danger', 'Validation failed: ' + error.message);
+            }
+            updateProcessButton();
+        }
+
+        async function processImages(e) {
+            e.preventDefault();
+            
+            const formData = new FormData();
+            formData.append('api_key', document.getElementById('apiKey').value);
+            formData.append('model', document.getElementById('modelSelect').value);
+            
+            selectedFiles.forEach(file => {
+                formData.append('images', file);
+            });
+
+            // Show progress
+            document.getElementById('progressContainer').style.display = 'block';
+            document.getElementById('resultsContainer').style.display = 'none';
+
+            try {
+                const response = await fetch('/process_cards', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+                
+                if (result.success) {
+                    currentSessionId = result.session_id;
+                    displayResults(result);
+                    showProcessingStats(result);
+                } else {
+                    showAlert('progressContainer', 'danger', result.error);
+                }
+            } catch (error) {
+                showAlert('progressContainer', 'danger', 'Processing failed: ' + error.message);
+            } finally {
+                document.getElementById('progressContainer').style.display = 'none';
+            }
+        }
+
+        function displayResults(result) {
+            const tbody = document.getElementById('resultsBody');
+            tbody.innerHTML = '';
+            
+            result.data.forEach(card => {
+                const row = tbody.insertRow();
+                row.innerHTML = `
+                    <td>${card.name || ''}</td>
+                    <td>${card.company || ''}</td>
+                    <td>${card.email || ''}</td>
+                    <td>${card.phone || ''}</td>
+                    <td>
+                        <div class="progress" style="height: 20px;">
+                            <div class="progress-bar" style="width: ${(card.confidence * 100)}%">${(card.confidence * 100).toFixed(0)}%</div>
+                        </div>
+                    </td>
+                `;
+            });
+
+            document.getElementById('resultsContainer').style.display = 'block';
+            
+            // Show Notion upload if configured
+            const notionToken = document.getElementById('notionToken').value;
+            const notionDatabase = document.getElementById('notionDatabase').value;
+            if (notionToken && notionDatabase) {
+                document.getElementById('uploadNotion').style.display = 'inline-block';
+            }
+        }
+
+        function showProcessingStats(result) {
+            document.getElementById('processingStats').innerHTML = `
+                <div class="alert alert-info">
+                    <strong>Processing Complete!</strong><br>
+                    Extracted ${result.cards_extracted} cards from ${result.images_processed} images<br>
+                    Total cost: ${result.total_cost}
+                </div>
+            `;
+        }
+
+        async function downloadFile(format) {
+            if (!currentSessionId) return;
+            
+            const url = `/export/${format}/${currentSessionId}`;
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `business_cards.${format}`;
+            a.click();
+        }
+
+        function showAlert(containerId, type, message) {
+            const container = document.getElementById(containerId);
+            container.innerHTML = `<div class="alert alert-${type} alert-dismissible fade show mt-2">
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>`;
+        }
+
+        // Initialize
+        updateModelInfo();
+    </script>
+</body>
+</html>
