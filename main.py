@@ -25,12 +25,15 @@ from utils.data_processing import (
 )
 from utils.notion_client import upload_to_notion, validate_notion_credentials
 
+# Check if we're in embed mode
+embed_mode = st.query_params.get("embed", "false").lower() == "true"
+
 # Page configuration
 st.set_page_config(
     page_title="AI Business Card Reader",
     page_icon="🪪",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="expanded" if not embed_mode else "collapsed"
 )
 
 # Initialize session state
@@ -43,10 +46,39 @@ if 'api_key_validated' not in st.session_state:
 if 'notion_validated' not in st.session_state:
     st.session_state.notion_validated = False
 
+# Apply embed mode styling
+if embed_mode:
+    st.markdown("""
+    <style>
+    .stApp > header {
+        background-color: transparent;
+    }
+    
+    .stApp {
+        margin-top: -80px;
+    }
+    
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
+    
+    .stDeployButton {display:none;}
+    .stDecoration {display:none;}
+    
+    .stApp > div:first-child {
+        margin-top: -20px;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
 def main():
     # Header
-    st.title("🪪 AI Business Card Reader")
-    st.markdown("Extract contact information from business cards using GPT Vision")
+    if embed_mode:
+        st.markdown("### 🪪 AI Business Card Reader")
+        st.markdown("*Extract contact information from business cards using GPT Vision*")
+    else:
+        st.title("🪪 AI Business Card Reader")
+        st.markdown("Extract contact information from business cards using GPT Vision")
     
     # Sidebar for API Configuration
     with st.sidebar:
