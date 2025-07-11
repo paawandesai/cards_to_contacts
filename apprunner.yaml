@@ -3,23 +3,11 @@ runtime: python3
 build:
   commands:
     build:
-      - pip install --upgrade pip
-      - echo "Installing streamlit..."
-      - pip install streamlit==1.28.1 --no-cache-dir
-      - echo "Installing openai..."
-      - pip install openai==1.3.7 --no-cache-dir
-      - echo "Installing pandas..."
-      - pip install pandas==2.1.3 --no-cache-dir
-      - echo "Installing requests..."
-      - pip install requests==2.31.0 --no-cache-dir
-      - echo "Installing openpyxl..."
-      - pip install openpyxl==3.1.2 --no-cache-dir
-      - echo "Installing Pillow..."
-      - pip install Pillow==10.1.0 --no-cache-dir
-      - echo "Installing python-dotenv..."
-      - pip install python-dotenv==1.0.0 --no-cache-dir
-      - echo "All packages installed successfully!"
+      - echo "Build phase completed"
 run:
+  pre-run:
+    - pip install --upgrade pip
+    - pip install -r requirements.txt
   command: streamlit run main.py --server.port=8080 --server.address=0.0.0.0 --server.enableXsrfProtection=false --server.enableCORS=false
   network:
     port: 8080
