@@ -246,7 +246,7 @@
         let selectedFiles = [];
         let apiKeyValidated = false;
         let currentSessionId = null;
-        let modelOptions = {{ model_options | tojsonfilter }};
+        let modelOptions = {{ model_options | tojson }};
 
         // File upload handling
         document.getElementById('imageInput').addEventListener('change', handleFileSelect);
